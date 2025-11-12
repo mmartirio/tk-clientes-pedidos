@@ -1,0 +1,25 @@
+tk-clientes-pedidos/
+├── agente_ia.py
+├── dashboard.py
+├── db.py
+├── logs.py
+├── main.py
+├── models.py
+├── popular_dados_exemplo.py
+├── readme.md
+├── requirements.txt
+├── Structure.md
+├── utils.py
+├── __pycache__/
+├── logs/
+│   └──
+└── views/
+	├── __init__.py
+	├── agente_ai_views.py
+	├── cliente_views.py
+	├── dashboard_view.py
+	├── logs_views.py
+	├── pedidos_views.py
+	├── produtos_views.py
+	├── relatorios_views.py
+	└── __pycache__/

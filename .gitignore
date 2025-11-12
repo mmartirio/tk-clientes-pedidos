@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.build/
+.dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE/editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs and runtime
+logs/
+*.log
+
+# Local data files
+clientes_pedidos.db
+*.sqlite
+*.sqlite3
+
+# Problematic nested repos or external dirs
+remote/
+
+# Cache
+.cache/
+
+# Reports/exports
+*.pdf
+*.csv
+*.png
+
+# Notebook checkpoints
+.ipynb_checkpoints/
