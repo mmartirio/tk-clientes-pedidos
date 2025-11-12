@@ -1,47 +1,32 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+*$py.class
 *.so
-*.egg-info/
-.eggs/
-.build/
-.dist/
+.Python
 
-# Virtual environments
+# Virtual Environment
 .venv/
 venv/
+ENV/
 env/
 
-# IDE/editor
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# IDEs
 .vscode/
 .idea/
-*.code-workspace
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Logs and runtime
-logs/
-*.log
-
-# Local data files
-clientes_pedidos.db
-*.sqlite
-*.sqlite3
-
-# Problematic nested repos or external dirs
-remote/
-
-# Cache
-.cache/
-
-# Reports/exports
-*.pdf
-*.csv
-*.png
-
-# Notebook checkpoints
-.ipynb_checkpoints/

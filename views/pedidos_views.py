@@ -48,20 +48,42 @@ class PedidosView(ctk.CTkFrame):
         lbl_titulo = ctk.CTkLabel(frame_principal, text="Gerenciamento de Pedidos", font=("Arial", 18, "bold"))
         lbl_titulo.pack(pady=10)
 
-        # --- ABAS ---
-        self.tabview = ctk.CTkTabview(frame_principal)
-        self.tabview.pack(fill="both", expand=True, pady=10)
+        # --- NAVEGAÇÃO SUPERIOR (Cadastro | Listar | Analisar) ---
+        nav_frame = ctk.CTkFrame(frame_principal)
+        nav_frame.pack(fill="x", padx=10, pady=(0, 5))
 
-        # Aba Cadastro
-        tab_cadastro = self.tabview.add("Cadastro")
-        self._criar_aba_cadastro(tab_cadastro)
+        # Contêiner interno centralizado para agrupar os botões
+        nav_inner = ctk.CTkFrame(nav_frame, fg_color="transparent")
+        nav_inner.pack(anchor="center")
 
-        # Aba Listar
-        tab_listar = self.tabview.add("Listar Pedidos")
-        self._criar_aba_listar(tab_listar)
+        btn_nav_cadastro = ctk.CTkButton(nav_inner, text="Cadastro", command=self._mostrar_cadastro)
+        btn_nav_cadastro.pack(side="left", padx=5)
 
-    def _criar_aba_cadastro(self, parent):
-        """Cria a aba de cadastro de pedidos."""
+        btn_nav_listar = ctk.CTkButton(nav_inner, text="Listar", command=self._mostrar_listagem)
+        btn_nav_listar.pack(side="left", padx=5)
+
+        btn_nav_analisar = ctk.CTkButton(nav_inner, text="Analisar Pedidos", command=self._analisar_pedidos)
+        btn_nav_analisar.pack(side="left", padx=5)
+
+        # --- CONTAINER PRINCIPAL PARA CONTEÚDO ---
+        self.container_conteudo = ctk.CTkFrame(frame_principal)
+        self.container_conteudo.pack(fill="both", expand=True, pady=10)
+
+        # Inicia mostrando a tela de cadastro
+        self._mostrar_cadastro()
+
+
+    def _mostrar_cadastro(self):
+        """Limpa o container e mostra a tela de cadastro."""
+        for widget in self.container_conteudo.winfo_children():
+            widget.destroy()
+        self._criar_aba_cadastro(self.container_conteudo)
+
+    def _mostrar_listagem(self):
+        """Limpa o container e mostra a tela de listagem."""
+        for widget in self.container_conteudo.winfo_children():
+            widget.destroy()
+        self._criar_aba_listar(self.container_conteudo)
 
     def _criar_aba_cadastro(self, parent):
         """Cria a aba de cadastro de pedidos."""
@@ -528,4 +550,98 @@ DETALHES DO PEDIDO #{pid}
 
         except Exception as e:
             messagebox.showerror("Erro", f"Erro ao exibir detalhes: {e}")
+
+    def _analisar_pedidos(self):
+        """Gera análise dos pedidos (últimos 30 dias) e exibe na tela atual."""
+        # Limpa container e mostra mensagem de carregamento
+        for widget in self.container_conteudo.winfo_children():
+            widget.destroy()
+
+        loading_frame = ctk.CTkFrame(self.container_conteudo)
+        loading_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        loading_label = ctk.CTkLabel(
+            loading_frame, 
+            text="Análise de pedidos está sendo gerada...",
+            font=("Arial", 16, "bold")
+        )
+        loading_label.pack(expand=True)
+
+        # Força atualização da UI para mostrar a mensagem
+        self.update()
+
+        try:
+            from utils import analisar_pedidos
+
+            resultado = analisar_pedidos(db_path='clientes_pedidos.db', periodo_dias=30)
+
+            # Limpa mensagem de loading
+            for widget in self.container_conteudo.winfo_children():
+                widget.destroy()
+
+            if not resultado or not resultado.get('sucesso'):
+                erro = (resultado or {}).get('erro') if isinstance(resultado, dict) else None
+                messagebox.showwarning("Análise", f"Não foi possível gerar a análise agora.\n{erro or ''}")
+                # Volta para cadastro em caso de erro
+                self._mostrar_cadastro()
+                return
+
+            def brl(v):
+                try:
+                    return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                except Exception:
+                    return f"R$ {v}"
+
+            metricas = resultado.get('metricas', {})
+            produtos = resultado.get('produtos_mais_vendidos', [])
+            analise_texto = resultado.get('analise_ia', '') or 'Sem texto de análise no momento.'
+
+            texto = """
+═══════════════════════════════════════
+ANÁLISE DE PEDIDOS - ÚLTIMOS 30 DIAS
+═══════════════════════════════════════
+
+MÉTRICAS GERAIS
+"""
+            texto += f"\n- Total de pedidos: {metricas.get('total_pedidos', 0)}"
+            texto += f"\n- Receita total: {brl(metricas.get('receita_total', 0.0))}"
+            texto += f"\n- Ticket médio: {brl(metricas.get('ticket_medio', 0.0))}\n"
+
+            texto += "\nTOP 10 PRODUTOS MAIS VENDIDOS\n"
+            if not produtos:
+                texto += "\nNenhum produto encontrado no período.\n"
+            else:
+                for i, p in enumerate(produtos[:10], 1):
+                    texto += f"\n{i}. {p.get('produto', '—')}"
+                    texto += f"\n   - Quantidade vendida: {p.get('quantidade_vendida', 0)}"
+                    texto += f"\n   - Presente em {p.get('num_pedidos', 0)} pedidos"
+                    texto += f"\n   - Receita: {brl(p.get('receita', 0.0))}"
+                    texto += f"\n   - Preço médio: {brl(p.get('preco_medio', 0.0))}\n"
+
+            texto += "\n═══════════════════════════════════════\nINSIGHTS DA IA\n═══════════════════════════════════════\n\n"
+            texto += analise_texto
+
+            # Exibe análise no container principal com scrollbar
+            frame = ctk.CTkFrame(self.container_conteudo)
+            frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+            # CTkTextbox já tem scrollbar integrada - fundo branco e texto preto
+            caixa = ctk.CTkTextbox(
+                frame, 
+                font=("Courier New", 11), 
+                wrap="word",
+                fg_color="white",
+                text_color="black"
+            )
+            caixa.pack(fill="both", expand=True, padx=5, pady=5)
+            caixa.insert("1.0", texto)
+            caixa.configure(state="disabled")
+
+        except Exception as e:
+            # Limpa loading em caso de erro
+            for widget in self.container_conteudo.winfo_children():
+                widget.destroy()
+            messagebox.showerror("Erro", f"Erro ao analisar pedidos: {e}")
+            # Volta para cadastro
+            self._mostrar_cadastro()
 
