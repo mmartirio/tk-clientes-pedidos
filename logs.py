@@ -17,6 +17,15 @@ try:  # customtkinter é opcional
 except Exception:  # pragma: no cover
     ctk = None
 
+class SafeStreamHandler(logging.StreamHandler):
+    """StreamHandler que ignora erros de flush (OSError errno 22)."""
+    def flush(self):
+        try:
+            super().flush()
+        except (OSError, ValueError):
+            # Ignora erros de flush em streams inválidos
+            pass
+
 class SistemaLogs:
     def __init__(self, nome_aplicacao="sistema_clientes_pedidos"):
         self.nome_aplicacao = nome_aplicacao
@@ -52,8 +61,8 @@ class SistemaLogs:
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
         
-        # Handler para console
-        console_handler = logging.StreamHandler()
+        # Handler para console (com tratamento de erro de flush)
+        console_handler = SafeStreamHandler()
         console_handler.setLevel(logging.INFO)
         console_handler.setFormatter(formatter)
         

@@ -111,13 +111,31 @@ class PedidosView(ctk.CTkFrame):
         btn_adicionar = ctk.CTkButton(form_frame, text="Adicionar Item", command=self._adicionar_item_pedido)
         btn_adicionar.grid(row=4, column=1, sticky="w", padx=5, pady=10)
 
-        # --- LISTA DE ITENS ---
-        self.tree_itens = ttk.Treeview(parent, columns=("produto", "quantidade", "valor", "subtotal"), show="headings", height=8)
+        # --- LISTA DE ITENS --- (com scrollbar interna)
+        tree_itens_container = ctk.CTkFrame(parent)
+        tree_itens_container.pack(fill="both", expand=True, pady=10)
+
+        self.tree_itens = ttk.Treeview(
+            tree_itens_container,
+            columns=("produto", "quantidade", "valor", "subtotal"),
+            show="headings",
+            height=8
+        )
         self.tree_itens.heading("produto", text="Produto")
         self.tree_itens.heading("quantidade", text="Qtd")
         self.tree_itens.heading("valor", text="Valor Unitário")
         self.tree_itens.heading("subtotal", text="Subtotal")
-        self.tree_itens.pack(fill="both", expand=True, pady=10)
+
+        scrollbar_itens_y = ttk.Scrollbar(tree_itens_container, orient="vertical", command=self.tree_itens.yview)
+        self.tree_itens.configure(yscrollcommand=scrollbar_itens_y.set)
+        scrollbar_itens_x = ttk.Scrollbar(tree_itens_container, orient="horizontal", command=self.tree_itens.xview)
+        self.tree_itens.configure(xscrollcommand=scrollbar_itens_x.set)
+
+        tree_itens_container.grid_columnconfigure(0, weight=1)
+        tree_itens_container.grid_rowconfigure(0, weight=1)
+        self.tree_itens.grid(row=0, column=0, sticky="nsew")
+        scrollbar_itens_y.grid(row=0, column=1, rowspan=2, sticky="ns")
+        scrollbar_itens_x.grid(row=1, column=0, sticky="ew")
 
         # --- TOTAL ---
         from utils import formatar_moeda
@@ -158,9 +176,11 @@ class PedidosView(ctk.CTkFrame):
         btn_limpar_filtro = ctk.CTkButton(filtro_frame, text="Limpar Filtros", fg_color="gray", hover_color="#555", command=self._limpar_filtros)
         btn_limpar_filtro.grid(row=0, column=5, padx=5, pady=5)
 
-        # --- LISTA DE PEDIDOS ---
+        # --- LISTA DE PEDIDOS --- (com scrollbar interna)
         colunas = ("id", "cliente", "data", "total", "status")
-        self.tree_pedidos = ttk.Treeview(parent, columns=colunas, show="headings", height=15)
+        tree_ped_container = ctk.CTkFrame(parent)
+        tree_ped_container.pack(fill="both", expand=True, pady=10, padx=10)
+        self.tree_pedidos = ttk.Treeview(tree_ped_container, columns=colunas, show="headings", height=15)
         # Cabeçalhos com ordenação por coluna
         self.tree_pedidos.heading("id", text="ID", command=lambda: self._sort_pedidos_by("id"))
         self.tree_pedidos.heading("cliente", text="Cliente", command=lambda: self._sort_pedidos_by("cliente"))
@@ -174,17 +194,19 @@ class PedidosView(ctk.CTkFrame):
         self.tree_pedidos.column("total", width=120, anchor="e")
         self.tree_pedidos.column("status", width=100, anchor="center")
 
-        self.tree_pedidos.pack(fill="both", expand=True, pady=10, padx=10)
+        scrollbar_ped_y = ttk.Scrollbar(tree_ped_container, orient="vertical", command=self.tree_pedidos.yview)
+        self.tree_pedidos.configure(yscrollcommand=scrollbar_ped_y.set)
+        scrollbar_ped_x = ttk.Scrollbar(tree_ped_container, orient="horizontal", command=self.tree_pedidos.xview)
+        self.tree_pedidos.configure(xscrollcommand=scrollbar_ped_x.set)
 
-        # Scrollbar
-        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=self.tree_pedidos.yview)
-        self.tree_pedidos.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
+        tree_ped_container.grid_columnconfigure(0, weight=1)
+        tree_ped_container.grid_rowconfigure(0, weight=1)
+        self.tree_pedidos.grid(row=0, column=0, sticky="nsew")
+        scrollbar_ped_y.grid(row=0, column=1, rowspan=2, sticky="ns")
+        scrollbar_ped_x.grid(row=1, column=0, sticky="ew")
 
         # Bind duplo clique: só abre detalhes se duplo clique for em célula, não cabeçalho
         self.tree_pedidos.bind("<Double-1>", self._on_tree_pedidos_double_click)
-        # Atualiza widget de status ao trocar a seleção
-        self.tree_pedidos.bind("<<TreeviewSelect>>", self._on_tree_select_update_status_widget)
 
         # Estado de ordenação da listagem de pedidos
         self._sort_pedidos_state = {}
@@ -208,18 +230,8 @@ class PedidosView(ctk.CTkFrame):
         btn_cancelar = ctk.CTkButton(botoes_frame, text="🚫 Cancelar Pedido", fg_color="#EF4444", hover_color="#DC2626", command=self._cancelar_pedido)
         btn_cancelar.grid(row=0, column=4, padx=5)
 
-        # Widget de Status (OptionMenu)
-        self._status_widget_updating = False
-        ctk.CTkLabel(botoes_frame, text="Status:").grid(row=0, column=5, padx=(20,5))
-        self.status_var = ctk.StringVar(value="Pendente")
-        self.status_option = ctk.CTkOptionMenu(
-            botoes_frame,
-            values=["Pendente", "Concluído", "Cancelado"],
-            variable=self.status_var,
-            command=self._alterar_status_via_widget
-        )
-        self.status_option.grid(row=0, column=6, padx=5)
-        botoes_frame.grid_columnconfigure(7, weight=1)
+        # Espaçador para alinhar botões
+        botoes_frame.grid_columnconfigure(5, weight=1)
 
         # Carregar pedidos ao iniciar (com delay para garantir que tudo foi criado)
         self.after(100, self._carregar_pedidos)
@@ -323,77 +335,7 @@ class PedidosView(ctk.CTkFrame):
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao cancelar pedido: {e}")
 
-    def _on_tree_select_update_status_widget(self, event=None):
-        """Sincroniza o OptionMenu de status com o pedido selecionado."""
-        try:
-            selecionado = self.tree_pedidos.selection()
-            if not selecionado:
-                return
-            item = self.tree_pedidos.item(selecionado[0])
-            valores = item.get("values", [])
-            if not valores or len(valores) < 5:
-                return
-            status = str(valores[4])
-            # Normaliza possíveis variações sem acento
-            status_norm = status.lower()
-            if status_norm == 'concluido':
-                status = 'Concluído'
-            self._status_widget_updating = True
-            try:
-                self.status_var.set(status)
-            finally:
-                self._status_widget_updating = False
-        except Exception:
-            pass
-
-    def _alterar_status_via_widget(self, novo_status: str):
-        """Altera o status do pedido via OptionMenu, atualizando o banco."""
-        try:
-            if self._status_widget_updating:
-                return
-            selecionado = self.tree_pedidos.selection()
-            if not selecionado:
-                messagebox.showwarning("Alterar Status", "Selecione um pedido na lista.")
-                return
-
-            item = self.tree_pedidos.item(selecionado[0])
-            valores = item.get("values", [])
-            if not valores or len(valores) < 5:
-                messagebox.showerror("Erro", "Não foi possível identificar o pedido selecionado.")
-                return
-
-            pedido_id = valores[0]
-            status_atual = str(valores[4])
-
-            if status_atual == novo_status:
-                return
-
-            # Confirmação apenas para cancelamento
-            if novo_status == 'Cancelado':
-                from tkinter import messagebox as mb
-                if not mb.askyesno("Confirmar Cancelamento", f"Cancelar o pedido #{pedido_id}?\n\nEsta ação pode impactar relatórios."):
-                    # Reverte seleção visual
-                    self._status_widget_updating = True
-                    try:
-                        self.status_var.set(status_atual)
-                    finally:
-                        self._status_widget_updating = False
-                    return
-
-            # Atualiza no banco e mantém seleção após recarregar
-            self.cursor.execute("UPDATE pedidos SET status = ? WHERE id = ?", (novo_status, pedido_id))
-            self.conn.commit()
-            self._carregar_pedidos()
-
-            # Reseleciona o mesmo pedido na lista e sincroniza widget
-            for iid in self.tree_pedidos.get_children(''):
-                vals = self.tree_pedidos.item(iid).get('values', [])
-                if vals and vals[0] == pedido_id:
-                    self.tree_pedidos.selection_set(iid)
-                    self.tree_pedidos.see(iid)
-                    break
-        except Exception as e:
-            messagebox.showerror("Erro", f"Falha ao alterar status: {e}")
+    
 
     def _on_tree_pedidos_double_click(self, event=None):
         """Abre detalhes somente em duplo clique numa célula de linha."""

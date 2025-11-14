@@ -381,12 +381,15 @@ class DashboardView:
                     relief="flat",
                     font=('Segoe UI', 12, 'bold'))
 
-            # Container da tabela
+            # Container da tabela com scrollbar interna
             container_tabela = ctk.CTkFrame(self.frame_evolucao, fg_color="transparent")
             container_tabela.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
+            tree_container = ctk.CTkFrame(container_tabela, fg_color="transparent")
+            tree_container.pack(fill="both", expand=True)
+
             tree = ttk.Treeview(
-                container_tabela,
+                tree_container,
                 columns=("Data", "Pedidos"),
                 show="headings",
                 height=10,
@@ -402,7 +405,17 @@ class DashboardView:
             for data, total in dados_evolucao:
                 tree.insert("", "end", values=(data, total))
 
-            tree.pack(fill="both", expand=True)
+            # Scrollbars internas
+            v_scrollbar = ttk.Scrollbar(tree_container, orient="vertical", command=tree.yview)
+            tree.configure(yscrollcommand=v_scrollbar.set)
+            h_scrollbar = ttk.Scrollbar(tree_container, orient="horizontal", command=tree.xview)
+            tree.configure(xscrollcommand=h_scrollbar.set)
+
+            tree_container.grid_columnconfigure(0, weight=1)
+            tree_container.grid_rowconfigure(0, weight=1)
+            tree.grid(row=0, column=0, sticky="nsew")
+            v_scrollbar.grid(row=0, column=1, rowspan=2, sticky="ns")
+            h_scrollbar.grid(row=1, column=0, sticky="ew")
 
         except Exception as e:
             ctk.CTkLabel(

@@ -355,14 +355,16 @@ class ProdutosView(ctk.CTkFrame):
             )
             btn.pack(side=ctk.LEFT, padx=3)
 
-        # Frame da tabela
+        # Frame da tabela (com scrollbar interna)
         tabela_frame = ctk.CTkFrame(self)
         tabela_frame.pack(fill=ctk.BOTH, expand=True, padx=20, pady=10)
 
-        # Criar Treeview SEM scrollbars
+        tabela_container = ctk.CTkFrame(tabela_frame, fg_color="transparent")
+        tabela_container.pack(fill=ctk.BOTH, expand=True)
+
         colunas = ("id", "nome", "preco", "estoque")
         self.tabela = ttk.Treeview(
-            tabela_frame, 
+            tabela_container, 
             columns=colunas, 
             show="headings",
             height=15,
@@ -382,8 +384,18 @@ class ProdutosView(ctk.CTkFrame):
             self.tabela.heading(col, text=heading, command=lambda c=col: self._ordenar_por_coluna(c))
             self.tabela.column(col, width=width, anchor="center")
 
-        # Empacotar tabela SEM scrollbars
-        self.tabela.pack(side=ctk.LEFT, fill=ctk.BOTH, expand=True)
+        # Scrollbars dentro do contêiner
+        v_scrollbar = ttk.Scrollbar(tabela_container, orient="vertical", command=self.tabela.yview)
+        self.tabela.configure(yscrollcommand=v_scrollbar.set)
+        h_scrollbar = ttk.Scrollbar(tabela_container, orient="horizontal", command=self.tabela.xview)
+        self.tabela.configure(xscrollcommand=h_scrollbar.set)
+
+        # Layout com grid para manter a barra dentro
+        tabela_container.grid_columnconfigure(0, weight=1)
+        tabela_container.grid_rowconfigure(0, weight=1)
+        self.tabela.grid(row=0, column=0, sticky="nsew")
+        v_scrollbar.grid(row=0, column=1, rowspan=2, sticky="ns")
+        h_scrollbar.grid(row=1, column=0, sticky="ew")
 
         # Bind duplo clique: só edita se for em célula (não no cabeçalho)
         self.tabela.bind('<Double-1>', self._on_tabela_double_click)

@@ -262,14 +262,11 @@ class ClientesView(ctk.CTkFrame):
         v_scrollbar = ttk.Scrollbar(frame_tree, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=v_scrollbar.set)
 
-        # Scrollbar horizontal
-        h_scrollbar = ttk.Scrollbar(frame_tree, orient="horizontal", command=self.tree.xview)
-        self.tree.configure(xscrollcommand=h_scrollbar.set)
+        # (removido) Scrollbar horizontal
 
         # Empacotar treeview e scrollbars
         self.tree.pack(side='left', fill='both', expand=True)
         v_scrollbar.pack(side='right', fill='y')
-        h_scrollbar.pack(side='bottom', fill='x')
 
         # Configurar colunas
         colunas = [
@@ -283,6 +280,21 @@ class ClientesView(ctk.CTkFrame):
             # Adiciona comando de ordenação por coluna
             self.tree.heading(col_id, text=heading, command=lambda c=col_id: self._sort_by_column(c))
             self.tree.column(col_id, width=width, minwidth=50)
+
+        # Ajuste dinâmico de larguras para evitar overflow sem H-scroll
+        try:
+            # ID não estica; Nome/Email/Telefone esticam
+            self.tree.column('id', stretch=False)
+            self.tree.column('Nome', stretch=True)
+            self.tree.column('Email', stretch=True)
+            self.tree.column('Telefone', stretch=True)
+        except Exception:
+            pass
+
+        # Vincula redimensionamento do container para recalcular larguras
+        frame_tree.bind('<Configure>', self._on_resize_tree_clientes)
+        # Chamada inicial após montar UI
+        self.after(100, self._ajustar_larguras_clientes)
 
         # Bind duplo clique: só edita se for em célula (não no cabeçalho)
         self.tree.bind('<Double-1>', self._on_tree_double_click)
@@ -298,6 +310,53 @@ class ClientesView(ctk.CTkFrame):
 
         # Estado de ordenação por coluna
         self._sort_state = {}
+
+    def _on_resize_tree_clientes(self, event=None):
+        """Handler de resize do frame da Treeview para ajustar larguras."""
+        try:
+            self._ajustar_larguras_clientes()
+        except Exception:
+            pass
+
+    def _ajustar_larguras_clientes(self):
+        """Distribui a largura disponível entre as colunas sem precisar de H-scroll."""
+        try:
+            if not hasattr(self, 'tree') or not self.tree.winfo_ismapped():
+                return
+
+            # Largura disponível do widget (menos scrollbar vertical estimada)
+            total = max(self.tree.winfo_width(), 600)
+            reserva_scroll = 18
+            disponivel = max(total - reserva_scroll, 300)
+
+            # Larguras mínimas e fixas
+            w_id = 60  # fixo
+            min_nome = 180
+            min_email = 220
+            min_tel = 130
+
+            restante = max(disponivel - w_id, 200)
+            # Divide: Email e Nome recebem mais; Telefone um pouco menos
+            w_tel = max(min_tel, int(restante * 0.22))
+            w_email = max(min_email, int(restante * 0.40))
+            w_nome = max(min_nome, restante - w_tel - w_email)
+
+            # Ajuste fino: evita somatório exceder disponível
+            soma = w_id + w_nome + w_email + w_tel
+            if soma > disponivel:
+                excesso = soma - disponivel
+                # Reduz de Nome e Email proporcionalmente
+                redu_nome = min(excesso // 2, max(0, w_nome - min_nome))
+                redu_email = min(excesso - redu_nome, max(0, w_email - min_email))
+                w_nome -= redu_nome
+                w_email -= redu_email
+
+            self.tree.column('id', width=w_id)
+            self.tree.column('Nome', width=w_nome)
+            self.tree.column('Email', width=w_email)
+            self.tree.column('Telefone', width=w_tel)
+        except Exception:
+            pass
 
     def _on_tree_double_click(self, event):
         """Abre editor apenas se duplo clique for em uma célula, não em cabeçalho."""
