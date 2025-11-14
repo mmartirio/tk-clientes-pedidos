@@ -77,6 +77,9 @@ def executar_comando(sql, parametros=()):
     """
     Executa um comando SQL (INSERT, UPDATE, DELETE),
     convertendo automaticamente valores monetários para Decimal com 2 casas.
+    Retorna:
+    - INSERT: id do último registro inserido (lastrowid)
+    - UPDATE/DELETE: número de linhas afetadas (rowcount)
     """
     conn = get_connection()
     cursor = conn.cursor()
@@ -89,7 +92,12 @@ def executar_comando(sql, parametros=()):
 
         cursor.execute(sql, parametros_formatados)
         conn.commit()
-        return cursor.lastrowid
+
+        comando = sql.strip().split()[0].upper() if sql else ""
+        if comando == "INSERT":
+            return cursor.lastrowid
+        else:
+            return cursor.rowcount
     except Exception as e:
         conn.rollback()
         raise e

@@ -80,10 +80,12 @@ class RelatorioViews:
             raise
     
     def _formatar_moeda(self, valor):
-        """Formata valor para padrão BRL (R$ 1.234,56)"""
-        if valor is None:
+        """Formata valor para padrão BRL (R$ 1.234,56) usando utils.formatar_moeda"""
+        try:
+            from utils import formatar_moeda
+            return formatar_moeda(valor)
+        except Exception:
             return "R$ 0,00"
-        return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
         log_operacao("RELATORIOS", "Módulo de relatórios inicializado com CustomTkinter")
 

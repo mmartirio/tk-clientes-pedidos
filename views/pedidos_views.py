@@ -120,7 +120,8 @@ class PedidosView(ctk.CTkFrame):
         self.tree_itens.pack(fill="both", expand=True, pady=10)
 
         # --- TOTAL ---
-        self.lbl_total = ctk.CTkLabel(parent, text="Total: R$ 0,00", font=("Arial", 14, "bold"))
+        from utils import formatar_moeda
+        self.lbl_total = ctk.CTkLabel(parent, text=f"Total: {formatar_moeda(0)}", font=("Arial", 14, "bold"))
         self.lbl_total.pack(pady=10)
 
         # --- BOTÕES ---
@@ -160,11 +161,12 @@ class PedidosView(ctk.CTkFrame):
         # --- LISTA DE PEDIDOS ---
         colunas = ("id", "cliente", "data", "total", "status")
         self.tree_pedidos = ttk.Treeview(parent, columns=colunas, show="headings", height=15)
-        self.tree_pedidos.heading("id", text="ID")
-        self.tree_pedidos.heading("cliente", text="Cliente")
-        self.tree_pedidos.heading("data", text="Data")
-        self.tree_pedidos.heading("total", text="Total")
-        self.tree_pedidos.heading("status", text="Status")
+        # Cabeçalhos com ordenação por coluna
+        self.tree_pedidos.heading("id", text="ID", command=lambda: self._sort_pedidos_by("id"))
+        self.tree_pedidos.heading("cliente", text="Cliente", command=lambda: self._sort_pedidos_by("cliente"))
+        self.tree_pedidos.heading("data", text="Data", command=lambda: self._sort_pedidos_by("data"))
+        self.tree_pedidos.heading("total", text="Total", command=lambda: self._sort_pedidos_by("total"))
+        self.tree_pedidos.heading("status", text="Status", command=lambda: self._sort_pedidos_by("status"))
 
         self.tree_pedidos.column("id", width=50, anchor="center")
         self.tree_pedidos.column("cliente", width=250)
@@ -179,12 +181,17 @@ class PedidosView(ctk.CTkFrame):
         self.tree_pedidos.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
 
-        # Bind duplo clique para ver detalhes
-        self.tree_pedidos.bind("<Double-1>", self._ver_detalhes_pedido)
+        # Bind duplo clique: só abre detalhes se duplo clique for em célula, não cabeçalho
+        self.tree_pedidos.bind("<Double-1>", self._on_tree_pedidos_double_click)
+        # Atualiza widget de status ao trocar a seleção
+        self.tree_pedidos.bind("<<TreeviewSelect>>", self._on_tree_select_update_status_widget)
+
+        # Estado de ordenação da listagem de pedidos
+        self._sort_pedidos_state = {}
 
         # --- BOTÕES ---
         botoes_frame = ctk.CTkFrame(parent)
-        botoes_frame.pack(pady=10)
+        botoes_frame.pack(pady=10, fill="x")
 
         btn_atualizar = ctk.CTkButton(botoes_frame, text="🔄 Atualizar Lista", command=self._carregar_pedidos)
         btn_atualizar.grid(row=0, column=0, padx=5)
@@ -192,8 +199,253 @@ class PedidosView(ctk.CTkFrame):
         btn_ver_detalhes = ctk.CTkButton(botoes_frame, text="👁️ Ver Detalhes", command=lambda: self._ver_detalhes_pedido(None))
         btn_ver_detalhes.grid(row=0, column=1, padx=5)
 
+        btn_concluir = ctk.CTkButton(botoes_frame, text="✅ Concluir Pedido", fg_color="#10B981", hover_color="#059669", command=self._concluir_pedido)
+        btn_concluir.grid(row=0, column=2, padx=5)
+
+        btn_reabrir = ctk.CTkButton(botoes_frame, text="↩️ Reabrir Pedido", fg_color="#3B82F6", hover_color="#2563EB", command=self._reabrir_pedido)
+        btn_reabrir.grid(row=0, column=3, padx=5)
+
+        btn_cancelar = ctk.CTkButton(botoes_frame, text="🚫 Cancelar Pedido", fg_color="#EF4444", hover_color="#DC2626", command=self._cancelar_pedido)
+        btn_cancelar.grid(row=0, column=4, padx=5)
+
+        # Widget de Status (OptionMenu)
+        self._status_widget_updating = False
+        ctk.CTkLabel(botoes_frame, text="Status:").grid(row=0, column=5, padx=(20,5))
+        self.status_var = ctk.StringVar(value="Pendente")
+        self.status_option = ctk.CTkOptionMenu(
+            botoes_frame,
+            values=["Pendente", "Concluído", "Cancelado"],
+            variable=self.status_var,
+            command=self._alterar_status_via_widget
+        )
+        self.status_option.grid(row=0, column=6, padx=5)
+        botoes_frame.grid_columnconfigure(7, weight=1)
+
         # Carregar pedidos ao iniciar (com delay para garantir que tudo foi criado)
         self.after(100, self._carregar_pedidos)
+
+    def _concluir_pedido(self):
+        """Altera o status do pedido selecionado de Pendente para Concluído."""
+        try:
+            selecionado = self.tree_pedidos.selection()
+            if not selecionado:
+                messagebox.showwarning("Concluir Pedido", "Selecione um pedido na lista.")
+                return
+
+            item = self.tree_pedidos.item(selecionado[0])
+            valores = item.get("values", [])
+            if not valores or len(valores) < 5:
+                messagebox.showerror("Erro", "Não foi possível identificar o pedido selecionado.")
+                return
+
+            pedido_id = valores[0]
+            status_atual = valores[4]
+
+            if str(status_atual).lower() == 'concluído' or str(status_atual).lower() == 'concluido':
+                messagebox.showinfo("Concluir Pedido", f"O pedido #{pedido_id} já está concluído.")
+                return
+
+            if str(status_atual).lower() != 'pendente':
+                messagebox.showwarning("Concluir Pedido", f"Status atual é '{status_atual}'. Apenas pedidos Pendentes podem ser concluídos.")
+                return
+
+            # Atualiza no banco
+            self.cursor.execute("UPDATE pedidos SET status = ? WHERE id = ?", ('Concluído', pedido_id))
+            self.conn.commit()
+
+            messagebox.showinfo("Sucesso", f"Pedido #{pedido_id} concluído com sucesso!")
+            self._carregar_pedidos()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao concluir pedido: {e}")
+
+    def _reabrir_pedido(self):
+        """Reabre um pedido concluído/cancelado para status 'Pendente'."""
+        try:
+            selecionado = self.tree_pedidos.selection()
+            if not selecionado:
+                messagebox.showwarning("Reabrir Pedido", "Selecione um pedido na lista.")
+                return
+
+            item = self.tree_pedidos.item(selecionado[0])
+            valores = item.get("values", [])
+            if not valores or len(valores) < 5:
+                messagebox.showerror("Erro", "Não foi possível identificar o pedido selecionado.")
+                return
+
+            pedido_id = valores[0]
+            status_atual = str(valores[4]).lower()
+
+            if status_atual == 'pendente':
+                messagebox.showinfo("Reabrir Pedido", f"O pedido #{pedido_id} já está pendente.")
+                return
+
+            # Atualiza no banco
+            self.cursor.execute("UPDATE pedidos SET status = ? WHERE id = ?", ('Pendente', pedido_id))
+            self.conn.commit()
+            messagebox.showinfo("Sucesso", f"Pedido #{pedido_id} reaberto (Pendente).")
+            self._carregar_pedidos()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao reabrir pedido: {e}")
+
+    def _cancelar_pedido(self):
+        """Cancela um pedido (status 'Cancelado') após confirmação."""
+        try:
+            selecionado = self.tree_pedidos.selection()
+            if not selecionado:
+                messagebox.showwarning("Cancelar Pedido", "Selecione um pedido na lista.")
+                return
+
+            item = self.tree_pedidos.item(selecionado[0])
+            valores = item.get("values", [])
+            if not valores or len(valores) < 5:
+                messagebox.showerror("Erro", "Não foi possível identificar o pedido selecionado.")
+                return
+
+            pedido_id = valores[0]
+            status_atual = str(valores[4]).lower()
+
+            if status_atual == 'cancelado':
+                messagebox.showinfo("Cancelar Pedido", f"O pedido #{pedido_id} já está cancelado.")
+                return
+
+            from tkinter import messagebox as mb
+            confirmar = mb.askyesno(
+                "Confirmar Cancelamento",
+                f"Tem certeza que deseja cancelar o pedido #{pedido_id}?\n\nEsta ação pode impactar relatórios.")
+            if not confirmar:
+                return
+
+            # Atualiza no banco
+            self.cursor.execute("UPDATE pedidos SET status = ? WHERE id = ?", ('Cancelado', pedido_id))
+            self.conn.commit()
+            messagebox.showinfo("Sucesso", f"Pedido #{pedido_id} cancelado com sucesso.")
+            self._carregar_pedidos()
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao cancelar pedido: {e}")
+
+    def _on_tree_select_update_status_widget(self, event=None):
+        """Sincroniza o OptionMenu de status com o pedido selecionado."""
+        try:
+            selecionado = self.tree_pedidos.selection()
+            if not selecionado:
+                return
+            item = self.tree_pedidos.item(selecionado[0])
+            valores = item.get("values", [])
+            if not valores or len(valores) < 5:
+                return
+            status = str(valores[4])
+            # Normaliza possíveis variações sem acento
+            status_norm = status.lower()
+            if status_norm == 'concluido':
+                status = 'Concluído'
+            self._status_widget_updating = True
+            try:
+                self.status_var.set(status)
+            finally:
+                self._status_widget_updating = False
+        except Exception:
+            pass
+
+    def _alterar_status_via_widget(self, novo_status: str):
+        """Altera o status do pedido via OptionMenu, atualizando o banco."""
+        try:
+            if self._status_widget_updating:
+                return
+            selecionado = self.tree_pedidos.selection()
+            if not selecionado:
+                messagebox.showwarning("Alterar Status", "Selecione um pedido na lista.")
+                return
+
+            item = self.tree_pedidos.item(selecionado[0])
+            valores = item.get("values", [])
+            if not valores or len(valores) < 5:
+                messagebox.showerror("Erro", "Não foi possível identificar o pedido selecionado.")
+                return
+
+            pedido_id = valores[0]
+            status_atual = str(valores[4])
+
+            if status_atual == novo_status:
+                return
+
+            # Confirmação apenas para cancelamento
+            if novo_status == 'Cancelado':
+                from tkinter import messagebox as mb
+                if not mb.askyesno("Confirmar Cancelamento", f"Cancelar o pedido #{pedido_id}?\n\nEsta ação pode impactar relatórios."):
+                    # Reverte seleção visual
+                    self._status_widget_updating = True
+                    try:
+                        self.status_var.set(status_atual)
+                    finally:
+                        self._status_widget_updating = False
+                    return
+
+            # Atualiza no banco e mantém seleção após recarregar
+            self.cursor.execute("UPDATE pedidos SET status = ? WHERE id = ?", (novo_status, pedido_id))
+            self.conn.commit()
+            self._carregar_pedidos()
+
+            # Reseleciona o mesmo pedido na lista e sincroniza widget
+            for iid in self.tree_pedidos.get_children(''):
+                vals = self.tree_pedidos.item(iid).get('values', [])
+                if vals and vals[0] == pedido_id:
+                    self.tree_pedidos.selection_set(iid)
+                    self.tree_pedidos.see(iid)
+                    break
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao alterar status: {e}")
+
+    def _on_tree_pedidos_double_click(self, event=None):
+        """Abre detalhes somente em duplo clique numa célula de linha."""
+        try:
+            if event is not None:
+                region = self.tree_pedidos.identify('region', event.x, event.y)
+                if region != 'cell':
+                    return
+                row_id = self.tree_pedidos.identify_row(event.y)
+                if row_id:
+                    self.tree_pedidos.selection_set(row_id)
+            # Chama a ação normal de ver detalhes
+            self._ver_detalhes_pedido(None)
+        except Exception:
+            pass
+
+    def _sort_pedidos_by(self, col_id):
+        """Ordena a tree de pedidos pela coluna, alternando ASC/DESC."""
+        try:
+            dados = []
+            for iid in self.tree_pedidos.get_children(''):
+                val = self.tree_pedidos.set(iid, col_id)
+                chave = val
+                if col_id == 'id':
+                    try:
+                        chave = int(str(val))
+                    except Exception:
+                        chave = str(val)
+                elif col_id == 'total':
+                    # Converter "R$ 1.234,56" -> 1234.56
+                    try:
+                        s = str(val).replace('R$','').strip()
+                        s = s.replace('.', '').replace(',', '.')
+                        chave = float(s)
+                    except Exception:
+                        chave = 0.0
+                elif col_id == 'data':
+                    # Datas já em formato YYYY-MM-DD ordenam bem como string
+                    chave = str(val)
+                else:
+                    chave = str(val).lower() if val is not None else ''
+                dados.append((chave, iid))
+
+            descending = not self._sort_pedidos_state.get(col_id, False)
+            dados.sort(reverse=descending)
+
+            for index, (_, iid) in enumerate(dados):
+                self.tree_pedidos.move(iid, '', index)
+
+            self._sort_pedidos_state[col_id] = descending
+        except Exception:
+            pass
 
     # === CARREGAMENTO DE DADOS ===
     def _carregar_clientes(self):
@@ -241,10 +493,14 @@ class PedidosView(ctk.CTkFrame):
             if isinstance(preco, Decimal):
                 preco = float(preco)
             else:
-                preco = float(str(preco).replace(",", "."))
+                try:
+                    preco = float(str(preco))
+                except Exception:
+                    preco = 0.0
 
+            from utils import formatar_numero_brl
             self.entry_valor.delete(0, ctk.END)
-            self.entry_valor.insert(0, f"{preco:.2f}")
+            self.entry_valor.insert(0, formatar_numero_brl(preco))
             self.entry_quantidade.delete(0, ctk.END)
             self.entry_quantidade.insert(0, "1")
 
@@ -270,7 +526,8 @@ class PedidosView(ctk.CTkFrame):
                 return
 
             quantidade = int(quantidade_str)
-            preco_unitario = float(preco_str.replace(",", "."))
+            from utils import parse_moeda
+            preco_unitario = parse_moeda(preco_str)
             subtotal = quantidade * preco_unitario
 
             item = {
@@ -281,8 +538,14 @@ class PedidosView(ctk.CTkFrame):
                 "subtotal": subtotal,
             }
 
+            from utils import formatar_moeda
             self.itens_pedido.append(item)
-            self.tree_itens.insert("", "end", values=(produto_nome, quantidade, f"R$ {preco_unitario:.2f}", f"R$ {subtotal:.2f}"))
+            self.tree_itens.insert("", "end", values=(
+                produto_nome,
+                quantidade,
+                formatar_moeda(preco_unitario),
+                formatar_moeda(subtotal)
+            ))
             self._atualizar_total()
 
         except ValueError:
@@ -292,8 +555,9 @@ class PedidosView(ctk.CTkFrame):
 
     def _atualizar_total(self):
         """Atualiza o total do pedido."""
+        from utils import formatar_moeda
         total = sum(item["subtotal"] for item in self.itens_pedido)
-        self.lbl_total.configure(text=f"Total: R$ {total:.2f}")
+        self.lbl_total.configure(text=f"Total: {formatar_moeda(total)}")
 
     def _salvar_pedido(self):
         """Salva o pedido e itens no banco."""
@@ -342,7 +606,8 @@ class PedidosView(ctk.CTkFrame):
         for i in self.tree_itens.get_children():
             self.tree_itens.delete(i)
         self.itens_pedido.clear()
-        self.lbl_total.configure(text="Total: R$ 0,00")
+        from utils import formatar_moeda
+        self.lbl_total.configure(text=f"Total: {formatar_moeda(0)}")
 
     # === LISTAGEM DE PEDIDOS ===
     def _carregar_pedidos(self):
@@ -391,7 +656,8 @@ class PedidosView(ctk.CTkFrame):
             # Preencher árvore
             for pedido in pedidos:
                 pedido_id, cliente, data, total, status = pedido
-                total_formatado = f"R$ {float(total):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                from utils import formatar_moeda
+                total_formatado = formatar_moeda(total)
                 self.tree_pedidos.insert("", "end", values=(pedido_id, cliente, data, total_formatado, status))
                 if pedido_id <= 5:  # Mostrar apenas os 5 primeiros no log
                     print(f"[DEBUG] Pedido inserido: #{pedido_id} - {cliente}")
@@ -444,7 +710,8 @@ class PedidosView(ctk.CTkFrame):
             # Preencher árvore
             for pedido in pedidos:
                 pedido_id, cliente, data, total, status = pedido
-                total_formatado = f"R$ {float(total):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                from utils import formatar_moeda
+                total_formatado = formatar_moeda(total)
                 self.tree_pedidos.insert("", "end", values=(pedido_id, cliente, data, total_formatado, status))
 
             print(f"[DEBUG] Filtro aplicado: {len(pedidos)} pedido(s) encontrado(s)")
@@ -497,7 +764,8 @@ class PedidosView(ctk.CTkFrame):
 
             # Montar mensagem com detalhes
             pid, cliente, email, telefone, data, total, status = pedido
-            total_formatado = f"R$ {float(total):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            from utils import formatar_moeda
+            total_formatado = formatar_moeda(total)
 
             detalhes = f"""
 ═══════════════════════════════════════
@@ -516,8 +784,9 @@ DETALHES DO PEDIDO #{pid}
 📦 ITENS DO PEDIDO
 """
             for i, (produto, qtd, preco_unit, subtotal) in enumerate(itens, 1):
-                preco_formatado = f"R$ {float(preco_unit):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                subtotal_formatado = f"R$ {float(subtotal):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                from utils import formatar_moeda
+                preco_formatado = formatar_moeda(preco_unit)
+                subtotal_formatado = formatar_moeda(subtotal)
                 detalhes += f"\n   {i}. {produto}"
                 detalhes += f"\n      Quantidade: {qtd}"
                 detalhes += f"\n      Valor Unit.: {preco_formatado}"
@@ -586,11 +855,7 @@ DETALHES DO PEDIDO #{pid}
                 self._mostrar_cadastro()
                 return
 
-            def brl(v):
-                try:
-                    return f"R$ {float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                except Exception:
-                    return f"R$ {v}"
+            from utils import formatar_moeda as brl
 
             metricas = resultado.get('metricas', {})
             produtos = resultado.get('produtos_mais_vendidos', [])

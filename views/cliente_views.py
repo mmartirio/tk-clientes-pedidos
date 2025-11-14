@@ -280,11 +280,12 @@ class ClientesView(ctk.CTkFrame):
         ]
 
         for col_id, heading, width in colunas:
-            self.tree.heading(col_id, text=heading)
+            # Adiciona comando de ordenação por coluna
+            self.tree.heading(col_id, text=heading, command=lambda c=col_id: self._sort_by_column(c))
             self.tree.column(col_id, width=width, minwidth=50)
 
-        # Bind duplo clique para editar
-        self.tree.bind('<Double-1>', lambda e: self.editar_cliente())
+        # Bind duplo clique: só edita se for em célula (não no cabeçalho)
+        self.tree.bind('<Double-1>', self._on_tree_double_click)
 
         # Status bar
         self.status_bar = ctk.CTkLabel(
@@ -294,6 +295,52 @@ class ClientesView(ctk.CTkFrame):
             anchor="w"
         )
         self.status_bar.pack(fill='x', side='bottom', pady=5, padx=10)  # MARGIN LEFT ADICIONADO
+
+        # Estado de ordenação por coluna
+        self._sort_state = {}
+
+    def _on_tree_double_click(self, event):
+        """Abre editor apenas se duplo clique for em uma célula, não em cabeçalho."""
+        try:
+            region = self.tree.identify('region', event.x, event.y)
+            if region != 'cell':
+                return
+            # Garante seleção da linha clicada
+            row_id = self.tree.identify_row(event.y)
+            if row_id:
+                self.tree.selection_set(row_id)
+                self.editar_cliente()
+        except Exception:
+            pass
+
+    def _sort_by_column(self, col_id):
+        """Ordena a Treeview pela coluna clicada, alternando ASC/DESC."""
+        try:
+            dados = []
+            for iid in self.tree.get_children(''):
+                val = self.tree.set(iid, col_id)
+                # Tenta converter para inteiro ao ordenar id
+                if col_id == 'id':
+                    try:
+                        chave = int(val)
+                    except Exception:
+                        chave = val
+                else:
+                    chave = str(val).lower() if val is not None else ''
+                dados.append((chave, iid))
+
+            descending = not self._sort_state.get(col_id, False)
+            dados.sort(reverse=descending)
+
+            for index, (_, iid) in enumerate(dados):
+                self.tree.move(iid, '', index)
+
+            # Atualiza estado e feedback na barra de status
+            self._sort_state[col_id] = descending
+            ordem = 'DESC' if descending else 'ASC'
+            self.status_bar.configure(text=f"Lista ordenada por '{col_id}' ({ordem})")
+        except Exception as e:
+            self.status_bar.configure(text=f"❌ Erro ao ordenar: {str(e)}")
 
     def _on_busca_change(self, event=None):
         """Atualiza a busca automaticamente enquanto digita"""
@@ -362,7 +409,19 @@ class ClientesView(ctk.CTkFrame):
 
     def novo_cliente(self):
         """Abre o formulário para criar um novo cliente"""
-        ClienteForm(self.master, on_save=self.carregar_clientes)
+        ClienteForm(self.master, on_save=self._apos_salvar)
+
+    def _apos_salvar(self):
+        """Limpa busca e recarrega a lista após salvar/editar."""
+        try:
+            self.entry_busca.delete(0, tk.END)
+        except Exception:
+            pass
+        self.carregar_clientes()
+        try:
+            self.status_bar.configure(text="✅ Cliente salvo e lista atualizada")
+        except Exception:
+            pass
     
     def editar_cliente(self):
         """Abre o formulário para editar o cliente selecionado"""
@@ -377,7 +436,7 @@ class ClientesView(ctk.CTkFrame):
                 messagebox.showerror("Erro", "Nenhum dado do cliente encontrado.")
                 return
             
-            ClienteForm(self.master, cliente=dados, on_save=self.carregar_clientes)
+            ClienteForm(self.master, cliente=dados, on_save=self._apos_salvar)
         
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao abrir editor: {str(e)}")

@@ -68,8 +68,8 @@ class ProdutoForm(ctk.CTkToplevel):
         # Dicas
         dicas_frame = ctk.CTkFrame(main_frame, border_width=1)
         dicas_frame.pack(fill='x', pady=15)
-        
-        dicas_texto = "💡 Dicas:\n• Use ponto para decimais (ex: 29.90)\n• Estoque inicial pode ser zero"
+
+        dicas_texto = "💡 Dicas:\n• Você pode digitar com vírgula (ex: 29,90)\n• Estoque inicial pode ser zero"
         lbl_dicas = ctk.CTkLabel(
             dicas_frame, 
             text=dicas_texto,
@@ -108,15 +108,26 @@ class ProdutoForm(ctk.CTkToplevel):
         
         # Preencher dados se for edição
         if self.produto:
+            from utils import formatar_numero_brl, parse_moeda
             self.entry_nome.insert(0, self.produto[1] if len(self.produto) > 1 else "")
-            # Formatar preço para exibição com vírgula
-            preco = self.produto[2] if len(self.produto) > 2 else "0"
-            if hasattr(preco, 'replace'):
-                preco_formatado = preco.replace('.', ',')
-            else:
-                preco_formatado = str(preco).replace('.', ',')
-            self.entry_preco.insert(0, preco_formatado)
-            self.entry_estoque.insert(0, str(self.produto[3]) if len(self.produto) > 3 else "0")
+            # Preenche preço: pode ter vindo como "R$ 1.234,56" da tabela
+            preco_bruto = self.produto[2] if len(self.produto) > 2 else 0
+            try:
+                if isinstance(preco_bruto, (int, float)):
+                    preco_val = float(preco_bruto)
+                else:
+                    preco_val = parse_moeda(preco_bruto)
+            except Exception:
+                preco_val = 0.0
+            self.entry_preco.insert(0, formatar_numero_brl(preco_val))
+            # Preenche estoque: pode ter vindo como "⚠️ 3" da tabela
+            estoque_bruto = str(self.produto[3]) if len(self.produto) > 3 else "0"
+            try:
+                estoque_limpo = ''.join(ch for ch in str(estoque_bruto) if ch.isdigit())
+                estoque_val = estoque_limpo if estoque_limpo != '' else '0'
+            except Exception:
+                estoque_val = '0'
+            self.entry_estoque.insert(0, estoque_val)
         
         # Configurar grid
         form_frame.columnconfigure(1, weight=1)
@@ -146,8 +157,9 @@ class ProdutoForm(ctk.CTkToplevel):
             return None
         
         try:
-            # Converter vírgula para ponto para cálculo
-            preco = float(preco_str.replace(',', '.'))
+            # Aceitar vírgula e símbolos via utils
+            from utils import parse_moeda
+            preco = parse_moeda(preco_str)
             if preco <= 0:
                 messagebox.showerror("Erro", "O preço deve ser maior que zero.")
                 self.entry_preco.focus()
@@ -366,14 +378,15 @@ class ProdutosView(ctk.CTkFrame):
         ]
 
         for col, heading, width in config_colunas:
-            self.tabela.heading(col, text=heading)
+            # Adiciona comando de ordenação por coluna
+            self.tabela.heading(col, text=heading, command=lambda c=col: self._ordenar_por_coluna(c))
             self.tabela.column(col, width=width, anchor="center")
 
         # Empacotar tabela SEM scrollbars
         self.tabela.pack(side=ctk.LEFT, fill=ctk.BOTH, expand=True)
 
-        # Bind duplo clique para editar
-        self.tabela.bind('<Double-1>', lambda e: self._editar_produto())
+        # Bind duplo clique: só edita se for em célula (não no cabeçalho)
+        self.tabela.bind('<Double-1>', self._on_tabela_double_click)
 
         # Status bar
         self.status_bar = ctk.CTkLabel(
@@ -383,18 +396,72 @@ class ProdutosView(ctk.CTkFrame):
         )
         self.status_bar.pack(fill=ctk.X, side=ctk.BOTTOM, pady=5)
 
-    def _formatar_preco_brl(self, valor):
-        """Formata o preço para o formato BRL (R$ com vírgula)"""
+        # Estado de ordenação por coluna
+        self._sort_state = {}
+
+    def _on_tabela_double_click(self, event):
+        """Abre editor apenas se duplo clique ocorrer em célula de linha."""
         try:
-            if isinstance(valor, (int, float)):
-                # Formatar para 2 casas decimais e substituir ponto por vírgula
-                return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-            else:
-                # Se já for string, tentar converter
-                valor_float = float(str(valor).replace(',', '.'))
-                return f"R$ {valor_float:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-        except (ValueError, TypeError):
-            return f"R$ 0,00"
+            region = self.tabela.identify('region', event.x, event.y)
+            if region != 'cell':
+                return
+            row_id = self.tabela.identify_row(event.y)
+            if row_id:
+                self.tabela.selection_set(row_id)
+                self._editar_produto()
+        except Exception:
+            pass
+
+    def _ordenar_por_coluna(self, col_id):
+        """Ordena a tabela pela coluna clicada, alternando ASC/DESC."""
+        try:
+            dados = []
+            for iid in self.tabela.get_children(''):
+                val = self.tabela.set(iid, col_id)
+                chave = val
+                if col_id == 'id':
+                    try:
+                        chave = int(str(val))
+                    except Exception:
+                        chave = str(val)
+                elif col_id == 'estoque':
+                    # Pode vir com alerta "⚠️ X"
+                    try:
+                        numeros = ''.join(ch for ch in str(val) if ch.isdigit())
+                        chave = int(numeros) if numeros else 0
+                    except Exception:
+                        chave = 0
+                elif col_id == 'preco':
+                    # Converter "R$ 1.234,56" -> 1234.56
+                    try:
+                        s = str(val).replace('R$','').strip()
+                        s = s.replace('.', '').replace(',', '.')
+                        chave = float(s)
+                    except Exception:
+                        chave = 0.0
+                else:
+                    chave = str(val).lower() if val is not None else ''
+                dados.append((chave, iid))
+
+            descending = not self._sort_state.get(col_id, False)
+            dados.sort(reverse=descending)
+
+            for index, (_, iid) in enumerate(dados):
+                self.tabela.move(iid, '', index)
+
+            self._sort_state[col_id] = descending
+            ordem = 'DESC' if descending else 'ASC'
+            self.status_bar.configure(text=f"Lista ordenada por '{col_id}' ({ordem})")
+        except Exception as e:
+            self.status_bar.configure(text=f"❌ Erro ao ordenar: {str(e)}")
+
+    def _formatar_preco_brl(self, valor):
+        """Formata o preço para o formato BRL usando utils.formatar_moeda."""
+        try:
+            from utils import formatar_moeda
+            return formatar_moeda(valor)
+        except Exception:
+            return "R$ 0,00"
 
     def _escurecer_cor(self, cor):
         """Retorna uma versão mais escura da cor para hover effect"""

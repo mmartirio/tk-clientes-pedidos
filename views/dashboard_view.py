@@ -278,14 +278,14 @@ class DashboardView:
             },
             {
                 "titulo": "Ticket Médio", 
-                "valor": f'R$ {metricas["ticket_medio"]:.2f}', 
+                "valor": __import__('utils').formatar_moeda(metricas["ticket_medio"]), 
                 "cor": "#F59E0B", 
                 "icone": "💰", 
                 "desc": "Valor médio por pedido"
             },
             {
                 "titulo": "Vendas no Mês", 
-                "valor": f'R$ {metricas["total_vendas_mes"]:.2f}', 
+                "valor": __import__('utils').formatar_moeda(metricas["total_vendas_mes"]), 
                 "cor": "#EF4444", 
                 "icone": "📊", 
                 "desc": "Faturamento mensal"
@@ -505,9 +505,10 @@ class DashboardView:
                 ).pack(side="left")
 
                 # Valor com fonte maior
+                from utils import formatar_moeda
                 ctk.CTkLabel(
                     frame_cliente,
-                    text=f"R$ {total_gasto or 0:.2f}",
+                    text=formatar_moeda(total_gasto or 0),
                     font=ctk.CTkFont(size=12, weight="bold"),
                     text_color=("#10B981", "#34D399")
                 ).pack(side="right")
@@ -531,10 +532,11 @@ class DashboardView:
             self._criar_lista_status()
             self._criar_lista_top_clientes()
 
+            from utils import formatar_moeda
             log_operacao(
                 "DASHBOARD",
                 "Dados atualizados",
-                f"Pedidos: {metricas['pedidos_mes']}, Vendas: R$ {metricas['total_vendas_mes']:.2f}",
+                f"Pedidos: {metricas['pedidos_mes']}, Vendas: {formatar_moeda(metricas['total_vendas_mes'])}",
             )
         except Exception as e:
             log_erro(f"Erro ao atualizar dashboard: {str(e)}")

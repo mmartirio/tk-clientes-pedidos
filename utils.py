@@ -50,12 +50,52 @@ def confirmar_acao(titulo, mensagem):
     return messagebox.askyesno(titulo, mensagem)
 
 
-def formatar_moeda(valor):
-    """Formata valor como moeda brasileira."""
+def _to_float(valor):
     try:
-        return f"R$ {float(valor):.2f}".replace('.', ',')
-    except (ValueError, TypeError):
+        return float(valor)
+    except Exception:
+        return 0.0
+
+
+def formatar_moeda(valor):
+    """Formata valor em BRL: R$ 1.234,56."""
+    try:
+        v = _to_float(valor)
+        return f"R$ {v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    except Exception:
         return "R$ 0,00"
+
+
+def formatar_numero_brl(valor):
+    """Formata valor numérico com vírgula (sem prefixo R$), ex: 1.234,56."""
+    try:
+        v = _to_float(valor)
+        return f"{v:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    except Exception:
+        return "0,00"
+
+
+def parse_moeda(texto):
+    """Converte textos como 'R$ 1.234,56' ou '1234,56' para float 1234.56.
+    Aceita espaços, pontos de milhar e vírgula decimal.
+    """
+    if texto is None:
+        return 0.0
+    try:
+        s = str(texto).strip()
+        # remove símbolo e espaços
+        s = re.sub(r"[^0-9,.-]", "", s)
+        # se houver mais de uma vírgula, mantém apenas a última como decimal
+        if s.count(',') > 1:
+            last = s.rfind(',')
+            s = s[:last].replace(',', '') + s[last:]
+        # remove pontos de milhar
+        s = s.replace('.', '')
+        # troca vírgula por ponto para float
+        s = s.replace(',', '.')
+        return float(s) if s not in ('', '-', '.', ',') else 0.0
+    except Exception:
+        return 0.0
 
 
 def validar_data(data_str):

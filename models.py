@@ -1,13 +1,35 @@
-from db import executar_comando, consultar
+from db import executar_comando, consultar, consultar_um
 
 class Cliente:
     @staticmethod
     def listar():
-        return consultar("SELECT id, nome, email, telefone FROM clientes")
+        return consultar("SELECT id, nome, email, telefone FROM clientes ORDER BY id DESC")
 
     @staticmethod
     def obter_por_id(cliente_id):
         return consultar("SELECT id, nome, email, telefone FROM clientes WHERE id = ?", (cliente_id,))
+
+    @staticmethod
+    def criar(nome, email=None, telefone=None):
+        sql = "INSERT INTO clientes (nome, email, telefone) VALUES (?, ?, ?)"
+        novo_id = executar_comando(sql, (nome, email if email else None, telefone))
+        return bool(novo_id)
+
+    @staticmethod
+    def atualizar(cliente_id, nome, email=None, telefone=None):
+        sql = "UPDATE clientes SET nome = ?, email = ?, telefone = ? WHERE id = ?"
+        linhas = executar_comando(sql, (nome, email if email else None, telefone, cliente_id))
+        return linhas > 0
+
+    @staticmethod
+    def deletar(cliente_id):
+        # Impede apagar se houver pedidos vinculados
+        qtd = consultar_um("SELECT COUNT(1) FROM pedidos WHERE cliente_id = ?", (cliente_id,))
+        if qtd and qtd[0] and int(qtd[0]) > 0:
+            return False
+        sql = "DELETE FROM clientes WHERE id = ?"
+        linhas = executar_comando(sql, (cliente_id,))
+        return linhas > 0
 
 class Produto:
     @staticmethod
